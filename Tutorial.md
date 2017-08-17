@@ -38,7 +38,8 @@ We're going to need to aws-sdk node package and another package called uuid, so 
 
 ```shell 
 npm init -f
-npm install --save aws-sdk uuid
+npm install --save-dev aws-sdk 
+npm install --save uuid
 ```
 ## Create
 In a new directory called todos, create a new javascript file called create.js.
@@ -538,3 +539,285 @@ where validId is the uuid of one of your todos. You should get a response like t
 
 ## Update 
 Now we need a way to mark our todos as completed, so we'll implement the update function.
+
+Add the following to the functions section of `serverless.yml`
+```yaml
+  update:
+    handler: todos/update.update
+    events:
+      - http:
+          path: todos/{id}
+          method: put
+          cors: true
+```
+Again we're reusing a path and passing a path parameter, this time handling the `PUT` request type.
+
+Create the file `todos/update.js` and add the following code
+```javascript
+'use strict';
+const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-dependencies
+
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
+
+module.exports.update = (event, context, callback) => {
+    const data = JSON.parse(event.body);
+    if(typeof data.title !== "string" || typeof data.completed !== 'boolean'){
+        console.error('Validation Failed');
+        callback(new Error('Couldn\'t update the todo item.'));
+        return;
+    }
+
+    const params = {
+        TableName: process.env.DB_TABLE,
+        Key: {
+            id: event.pathParameters.id,
+        },
+        UpdateExpression: "set title=:t, completed=:c",
+        ExpressionAttributeValues:{
+            ":t": data.title,
+            ":c": data.completed,
+        },
+        ReturnValues:"ALL_NEW"
+    };
+
+    // update the todo in the database
+    dynamoDb.update(params, (error, result) => {
+        // handle potential errors
+        if (error) {
+            console.error(error);
+            callback(new Error('Couldn\'t update the todo item.'));
+            return;
+        }
+
+        // create a response
+        let response = {}
+        if(result.hasOwnProperty('Attributes')) {
+            response = {
+                statusCode: 200,
+                body: JSON.stringify(result.Attributes),
+            };
+        } else {
+            response = {
+                statusCode: 404,
+                body: JSON.stringify({'error':'Todo not found'}),
+            };
+        }
+        callback(null, response);
+    });
+};
+```
+
+The most confusing part of this is `params` so let's have a closer look.
+```javascript
+   const params = {
+        TableName: process.env.DB_TABLE,
+        Key: {
+            id: event.pathParameters.id,
+        },
+        UpdateExpression: "set title=:t, completed=:c",
+        ExpressionAttributeValues:{
+            ":t": data.title,
+            ":c": data.completed,
+        },
+        ReturnValues:"ALL_NEW"
+    };
+```
+The first part if familiar. We're saying which table to use and matching the item with the id provided in the url path.
+`UpdateExpression` is a string defining which attributes to update. You can also add new attributes this way. 
+`ExpressionAtrributeValues` contains the values to to be substituted for the placeholders in `UpdateExpression.`
+`ReturnValues` defines which attributes that should be returned. Here we saw to return all attributes of the updated item, rather than `UPDATED_NEW` which would only return the updated attributes.
+
+Let's deploy our function then try marking a todo as completed
+```shell 
+sls deploy
+curl -H "Content-Type: application/json" -X PUT \
+-d '{"title":"Buy Milk", "completed":"true"}' \
+https://yoururl/dev/todos/validId
+```
+You should get a response like
+```json
+{
+    "completed": true,
+    "id": "fc045860-82ee-11e7-ac45-1f2a09ee93e6",
+    "title": "Buy Milk"
+}
+```
+
+## Delete
+We have create, read and update methods so now we just need to add a delete method to complete our CRUD API.
+
+Add the follow to your `serverless.yml`
+```yaml
+  delete:
+    handler: todos/delete.delete
+    events:
+      - http:
+          path: todos/{id}
+          method: delete
+          cors: true
+```
+
+Now create `todos/delete.js` and paste in the following code:
+```javascript
+'use strict';
+const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-dependencies
+
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
+
+module.exports.delete = (event, context, callback) => {
+    const params = {
+        TableName: process.env.DB_TABLE,
+        Key: {
+            id: event.pathParameters.id,
+        },
+    };
+
+    // delete the todo from the database
+    dynamoDb.delete(params, (error) => {
+        // handle potential errors
+        if (error) {
+            console.error(error);
+            callback(new Error('Couldn\'t delete the todo item.'));
+            return;
+        }
+
+        // create a response
+        const response = {
+                statusCode: 204,
+        };
+        callback(null, response);
+    });
+};
+```
+The dynamoDb.delete functions nearly identically to the get function, so the code should be easy to understand. A response with a 204 status code can not have a body so there's no need to specify one.
+
+Let's deploy it and test it out
+```shell
+sls deploy
+curl -X DELETE https://yoururl/dev/todos/validId
+curl https://yoururl/dev/todos/
+```
+The todo you deleted should no longer appear in the list.
+
+## Archive
+There's one more function specified in the API Spec and that is the archive function. This function should delete all todos which have their completed property set to true.
+
+Add the following to the functions section of your `serverless.yml`
+```yaml
+  archive:
+    handler: todos/archive.archive
+    events:
+      - http:
+          path: todos
+          method: delete
+          cors: true
+```
+This ensures that delete requests to /todos path (rather than /todos/{id}) will be handled by our archive function.
+
+Create the files `todos/archive.js` and paste in the following code:
+```javascript
+'use strict';
+const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-dependencies
+
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
+
+module.exports.archive = (event, context, callback) => {
+    const params = {
+        TableName: process.env.DB_TABLE,
+        FilterExpression: "completed = :val",
+        ExpressionAttributeValues: {
+            ":val": true
+        },
+    };
+
+    // fetch all the todos from the database
+    dynamoDb.scan(params, (error, result) => {
+        // handle potential errors
+        if (error) {
+            console.error(error);
+            callback(new Error('Couldn\'t fetch the todo items.'));
+            return;
+        }
+
+        //Loop through and delete the returned items.
+        let processed = 0;
+        result.Items.forEach(item => {
+            const deleteParams = {
+                TableName: process.env.DB_TABLE,
+                Key: {
+                    id: item.id,
+                },
+            };
+            dynamoDb.delete(deleteParams, (error) => {
+                // handle potential errors
+                if (error) {
+                    console.log(item);
+                    console.error(error);
+                    callback(new Error('Couldn\'t delete the todo item.'));
+                    return;
+                }
+
+                //Increase the count of processed items, then check if we're done
+                processed++;
+                if(processed == result.Items.length) {
+                    // create a response
+                    const response = {
+                        statusCode: 204,
+                    };
+                    callback(null, response);
+                }
+            });
+        });
+    });
+};
+```
+There's a couple of new things here, so let's go through them.
+
+We've used dynamoDb.scan before but this time we're putting a filter on it
+```javascript
+    const params = {
+        TableName: process.env.DB_TABLE,
+        FilterExpression: "completed = :val",
+        ExpressionAttributeValues: {
+            ":val": true
+        },
+    };
+```
+The combination of `FilterExpression` and `ExpressionAttributeValues` ensure that only items with their completed attribute set to true will be returned by the scan. Note that, as has already been mentioned, the scan function actually still gets every item in the table before applying this filter, so it still uses the same amount of read capacity. 
+
+Once the items have been returned, we want to delete them. Dynamodb does not have a bulk delete function, so we need for call the delete function on each item individually, hence this part of the code
+```javascript
+        //Loop through and delete the returned items.
+        let processed = 0;
+        result.Items.forEach(item => {
+            const deleteParams = {
+                TableName: process.env.DB_TABLE,
+                Key: {
+                    id: item.id,
+                },
+            };
+            dynamoDb.delete(deleteParams, (error) => {
+```
+You'll notice the `let processed = 0;` line. This is needed because the dynamoDb functions are all asynchronous - we don't wait for one to completed before moving on to the next item in the loop and firing off its delete function.
+The deletes won't necessarily complete in order but we want to be sure they have all completed before we return a request to the user. So on each loop we increase the processed count by one. If the processed count is now the same as the length of the Items array, we can be sure all items have been deleted and return a response. 
+```javascript
+                //Increase the count of processed items, then check if we're done
+                processed++;
+                if(processed == result.Items.length) {
+                    // create a response
+                    const response = {
+                        statusCode: 204,
+                    };
+                    callback(null, response);
+                }
+```
+
+Deploy your function and test it out
+```shell
+sls deploy
+curl -X DELETE https://yoururl/dev/todos/
+curl https://yoururl/dev/todos/
+```
+There shouldn't be any todos with complete = true returned by the second curl request. You might want to create a few more todos and changed their completed status to play around.
+
+## Hooking it up to the frontend
