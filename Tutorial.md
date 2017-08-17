@@ -1,3 +1,4 @@
+## Setup
 ```shell
 serverless create --template aws-nodejs --path todomvc-api
 cd todomvc-api
@@ -39,7 +40,7 @@ We're going to need to aws-sdk node package and another package called uuid, so 
 npm init -f
 npm install --save aws-sdk uuid
 ```
-
+## Create
 In a new directory called todos, create a new javascript file called create.js.
 There's lots of useful in the default serverless.yaml file but we don't need any of it now so you can go ahead and delete anything that's commented out.
 We want have our new create.js file to handle the create requests so let's change our function name to create and our handler to todos.create. Your serverless.yml file should now look like this:
@@ -350,3 +351,190 @@ If you look in the DynamoDB table via the AWS console you should be able to see 
 
 That's all we need to do for our create function! We're now well on our way to having a fully functioning CRUD API. Let's start create the other functions.
 
+## List
+The next function in the API spec is list. This function is straight forward - there is no request body to parse so we simply need to fetch the todos from the database and return them in the response. 
+Create a new file `todos/list.js` and paste in the following code:
+```javascript
+'use strict';
+const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-dependencies
+
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
+
+module.exports.list = (event, context, callback) => {
+    const params = {
+        TableName: process.env.DB_TABLE,
+    };
+
+    // write the todo to the database
+    dynamoDb.scan(params, (error, result) => {
+        // handle potential errors
+        if (error) {
+            console.error(error);
+            callback(new Error('Couldn\'t fetch the todo items.'));
+            return;
+        }
+
+        // create a response
+        const response = {
+            statusCode: 200,
+            body: JSON.stringify(result.Items),
+        };
+        callback(null, response);
+    });
+};
+```
+Hopefully a lot of it looks familiar. The new piece here is the dynamoDb.scan function. The scan function always gets every item in the table. You can provide a filter expression but it is only applied after all items have been fetched. Using scan is fine and convinient for our use case but generally you should try to avoid it, see the [guidelines](http://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScanGuidelines.html).
+Scan provides an error and a result argument to the callback. Again we check for an error and if none occured then we return the array of items we got from scan.
+
+We've create our javascript function but we still need to tell serverless about it. Add the follow to the functions section of `serverless.yml`
+```yaml
+  list:
+    handler: todos/list.list
+    events:
+      - http:
+          path: todos
+          method: get
+          cors: true
+```
+This defines our new list lambda function, tells serverless requests are to be handle by the `list` function in our `todos/list.js` file and that it responds to `GET` requests on the todos path. This is the same path that our `create` function works on but that function only handled `POST` requests.
+
+Let's deploy our new function
+```shell
+sls deploy
+```
+Hopefully you'll see a response which contains something like this:
+```
+endpoints:
+  POST - https://980urz0ll1.execute-api.us-east-1.amazonaws.com/dev/todos
+  GET - https://980urz0ll1.execute-api.us-east-1.amazonaws.com/dev/todos
+```
+Let's create a couple more todos so we can be sure our list function is working
+```shell
+curl -H "Content-Type: application/json" -X POST -d '{"title":"Buy milk"}' https://yoururl/dev/todos
+curl -H "Content-Type: application/json" -X POST -d '{"title":"Re-evaluate life"}' https://yoururl/dev/todos
+```
+Now we can test our list function. Running
+```shell
+curl https://yoururl/dev/todos
+``` 
+Should return something like
+```json
+[{"id":"0a128530-82ef-11e7-ac45-1f2a09ee93e6","completed":false,"title":"Re-evaluate life"},{"id":"fc045860-82ee-11e7-ac45-1f2a09ee93e6","completed":false,"title":"Buy milk"},{"id":"2fbc57c0-82ea-11e7-8be7-697342addb6e","completed":false,"title":"My First Todo"}]
+```
+
+## Get
+We can get the full list of todos but we don't have any way of getting a single todo yet. In your `serverless.yml` file add the follow to the functions section:
+```yaml
+  get:
+    handler: todos/get.get
+    events:
+      - http:
+          path: todos/{id}
+          method: get
+          cors: true
+```
+The only thing we haven't seen before here is `path: todos/{id}`. The curly braces allow to capture the id as a path parameter and pass it to our function.
+
+Create a new file `todos/get.js` and paste in the following code:
+```javascript
+'use strict';
+const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-dependencies
+
+const dynamoDb = new AWS.DynamoDB.DocumentClient();
+
+module.exports.get = (event, context, callback) => {
+    const params = {
+        TableName: process.env.DB_TABLE,
+        Key: {
+            id: event.pathParameters.id,
+        },
+    };
+
+    // fetch the todo from the database
+    dynamoDb.get(params, (error, result) => {
+        // handle potential errors
+        if (error) {
+            console.error(error);
+            callback(new Error('Couldn\'t fetch the todo item.'));
+            return;
+        }
+
+        // create a response
+        const response = {
+            statusCode: 200,
+            body: JSON.stringify(result.Item),
+        };
+        callback(null, response);
+    });
+};
+```
+Here we're introduced to the dynamoDb.get function. Again this takes a parameters object as it's first argument. This object must contain a property `Key` which is an object with properties to match the key schema of the table. In our case the key schema is a single value, id.
+
+Let's deploy our new function
+```shell
+sls deploy
+```
+
+First let's see what happens if we try to get a todo using an invalid id.
+```shell
+curl https://yoururl/dev/todos/1a
+```
+Hmm it didn't return anything at all, isn't that a bit strange?
+To find out what's happening we'll use another one of serverless' handy features - log retrieval.
+Add the follow two lines at the start of the dynamoDb.get callback
+```javascript
+console.log(error);
+console.log(result);
+```
+Then run 
+```shell
+sls deploy
+curl https://yoururl/dev/todos/1a
+```
+If you've ever tried to read the logs for a lambda function in CloudWatch you'll know that it's very messy. Serverless provides a command to make things much easier. Let's have a look at the logs for our get function by running
+```shell
+sls logs --function get
+```
+There will be some information about the requests we've executed but you should also see something like
+```
+2017-08-17 13:11:20.873 (+10:00)	bdc8cba6-82f9-11e7-930b-1d31bc7f52b1	null
+2017-08-17 13:11:20.874 (+10:00)	bdc8cba6-82f9-11e7-930b-1d31bc7f52b1	{}
+```
+Which are the lines we logged to the console. We can see that error is null but no results were returned either. Getting no results isn't considered an error, so our function ends up returning nothing. Let's change our code to check we returned an item and if not return a 404 error.
+
+```javascript
+        // create a response
+        let response = {}
+        if(result.hasOwnProperty('Item')) {
+            response = {
+                statusCode: 200,
+                body: JSON.stringify(result.Item),
+            };
+        } else {
+            response = {
+                statusCode: 404,
+                body: JSON.stringify({'error':'Todo not found'}),
+            };
+        }
+        callback(null, response);
+```
+Now we deploy again
+```shell
+sls deploy
+curl https://yoururl/dev/todos/1a
+```
+and we get the response
+```json
+{"error":"Todo not found"}
+```
+Let's also check that it works for a valid todo id. Go back and get an id of one of the todos you created (you can see the list again by running `curl https://yoururl/dev/todos`) then run
+```shell
+curl https://yoururl/dev/todos/validId
+```
+where validId is the uuid of one of your todos. You should get a response like this
+```json
+{"id":"fc045860-82ee-11e7-ac45-1f2a09ee93e6","completed":false,"title":"Buy milk"}
+```
+
+## Update 
+Now we need a way to mark our todos as completed, so we'll implement the update function.
