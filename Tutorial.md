@@ -821,3 +821,30 @@ curl https://yoururl/dev/todos/
 There shouldn't be any todos with complete = true returned by the second curl request. You might want to create a few more todos and changed their completed status to play around.
 
 ## Hooking it up to the frontend
+We're now ready to hook up our API to the frontend. For convenience, there's a hosted version of the [Todo Client](https://itmasters.github.io/serverless-todomvc-client/) where you can copy and paste in your root url (https://yoururl/dev/todos), hit enter and everything should be good to go.
+
+You can also run the same site locally 
+```shell
+git clone https://github.com/ITMasters/serverless-todomvc-client.git
+cd serverless-todomvc-client
+npm install
+npm run start
+```
+To skip entering your url modify the file `/src/app/components/todo/todo.service.ts`
+And change line 25 from
+```javascript
+public apiUrl = '';  // URL to web api
+``` 
+to 
+```javascript
+public apiUrl = 'https://yoururl/dev/todos';  // URL to web api
+```
+
+## Wrapping up
+We've covered a lot - how to deploy a function to AWS Lambda, hook to up to a http endpoint, provisioning and using dynamoDB to create, get, update and retrieve records, and how to view logs from your functions. 
+
+This was a simple application but will hopefully give you the building blocks you need to develop fully fledged serverless applications in the future!
+
+Cheers,
+
+Hamish
