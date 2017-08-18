@@ -284,6 +284,9 @@ After this we can be confident that we have a valid request so we can go ahead a
         // create a response
         const response = {
             statusCode: 201,
+            headers: {
+                    "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+            },
             body: JSON.stringify(params.Item),
         };
         callback(null, response);
@@ -293,7 +296,7 @@ After this we can be confident that we have a valid request so we can go ahead a
 
 You'll notice we're using [Arrow Functions](https://developer.mozilla.org/en/docs/Web/JavaScript/Reference/Functions/Arrow_functions) to define our callback. Arrow functions are new in es6a and are effectively shorthand anonymous functions. They also don't bound `this` which can be very useful in object oriented projects.
 
-Our code checks if an error occurs and if it did, returns an error to the users. If not, we return the succesfully inserted item.
+Our code checks if an error occurs and if it did, returns an error to the users. If not, we return the succesfully inserted item. We also need to set the `Access-Control-Allow-Origin` header to ensure CORS requests work properly. Setting `cors` to true in `serverless.yml` enables support on the API gateway side, but our actual functions still need to return the header.
 
 Your complete `create.js` file should now look like this:
 ```javascript
@@ -332,6 +335,9 @@ module.exports.create = (event, context, callback) => {
         // create a response
         const response = {
             statusCode: 201,
+            headers: {
+                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+            },
             body: JSON.stringify(params.Item),
         };
         callback(null, response);
@@ -378,6 +384,9 @@ module.exports.list = (event, context, callback) => {
         // create a response
         const response = {
             statusCode: 200,
+            headers: {
+                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+            },
             body: JSON.stringify(result.Items),
         };
         callback(null, response);
@@ -463,6 +472,9 @@ module.exports.get = (event, context, callback) => {
         // create a response
         const response = {
             statusCode: 200,
+            headers: {
+                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+            },
             body: JSON.stringify(result.Item),
         };
         callback(null, response);
@@ -509,11 +521,17 @@ Which are the lines we logged to the console. We can see that error is null but 
         if(result.hasOwnProperty('Item')) {
             response = {
                 statusCode: 200,
+                headers: {
+                    "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+                },
                 body: JSON.stringify(result.Item),
             };
         } else {
             response = {
                 statusCode: 404,
+                headers: {
+                    "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+                },
                 body: JSON.stringify({'error':'Todo not found'}),
             };
         }
@@ -594,11 +612,17 @@ module.exports.update = (event, context, callback) => {
         if(result.hasOwnProperty('Attributes')) {
             response = {
                 statusCode: 200,
+                headers: {
+                    "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+                },
                 body: JSON.stringify(result.Attributes),
             };
         } else {
             response = {
                 statusCode: 404,
+                headers: {
+                    "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+                },
                 body: JSON.stringify({'error':'Todo not found'}),
             };
         }
@@ -684,6 +708,9 @@ module.exports.delete = (event, context, callback) => {
         // create a response
         const response = {
                 statusCode: 204,
+                headers: {
+                    "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+                },
         };
         callback(null, response);
     });
@@ -763,6 +790,9 @@ module.exports.archive = (event, context, callback) => {
                     // create a response
                     const response = {
                         statusCode: 204,
+                        headers: {
+                            "Access-Control-Allow-Origin" : "*" // Required for CORS support to work
+                        },
                     };
                     callback(null, response);
                 }
