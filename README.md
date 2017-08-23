@@ -1,5 +1,5 @@
 # Serverless TodoMVC API
-This readme accompanies the video provide to students of x on how to use the [Serverless Framework](https://serverless.com) to implement the [TodoMVC API Spec](https://github.com/tastejs/todomvc-api) on the AWS platform.
+This readme accompanies the video tutorial on how to use the [Serverless Framework](https://serverless.com) to implement the [TodoMVC API Spec](https://github.com/tastejs/todomvc-api) on the AWS platform.
 
 ## Installation 
 Instructions for installing Serverless can be found on the frameworks site [here](https://serverless.com). Effectively it is no different han installing any other Node.js, so you will need to install Node.js and npm first. How to do this is platform specific, there are installers provided for most major operating systems on the [Node.js download page](https://nodejs.org/en/) but my preferred solution is to use a package manager if one is available on your operating system. For OS X, you can follow [this guide](http://blog.teamtreehouse.com/install-node-js-npm-mac).
