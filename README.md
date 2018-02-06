@@ -1,4 +1,5 @@
 # Serverless TodoMVC API
+## tutorial for ITE531 students
 This readme accompanies the video tutorial on how to use the [Serverless Framework](https://serverless.com) to implement the [TodoMVC API Spec](https://github.com/tastejs/todomvc-api) on the AWS platform.
 
 ## Installation 
